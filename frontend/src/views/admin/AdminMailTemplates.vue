@@ -3,7 +3,7 @@
     <header class="head">
       <div>
         <h1>Mail templates</h1>
-        <p class="muted">Beheer standaardmails en gebruik variabelen zoals {naam}, {bedrijf} en {login_url}.</p>
+        <p class="muted">Beheer standaardmails en gebruik variabelen zoals {naam}, {bedrijf}, {login_url} en {reset_url}.</p>
       </div>
       <button class="btn btn-ghost" @click="load">Verversen</button>
     </header>
@@ -56,7 +56,6 @@
         </label>
 
         <div class="actions">
-          <button class="btn btn-primary" @click="save" :disabled="saving">{{ saving ? 'Opslaan...' : 'Nu opslaan' }}</button>
           <span v-if="savingKey === selected.id" class="muted small">Autosave...</span>
         </div>
         <p v-if="savedAt" class="muted small">Laatst automatisch opgeslagen om {{ savedAt }}.</p>
@@ -78,6 +77,25 @@
           <p v-if="sendStatus" class="muted small">{{ sendStatus }}</p>
           <p v-if="sendError" class="error">{{ sendError }}</p>
         </section>
+
+        <section class="logs-box">
+          <div class="logs-head">
+            <h2>Mail logging</h2>
+            <button class="btn btn-ghost" type="button" @click="loadLogs">Logs verversen</button>
+          </div>
+          <div class="log-list">
+            <article v-for="log in admin.mailLogs" :key="log.id" class="log-row" :class="log.status">
+              <div>
+                <strong>{{ log.status === 'success' ? 'Gelukt' : 'Fout' }} · {{ log.source }}</strong>
+                <span class="muted small">{{ formatDate(log.createdAt) }} · aan {{ log.to || '-' }}</span>
+                <span class="muted small">{{ log.subject || '-' }}</span>
+                <code v-if="log.messageId">{{ log.messageId }}</code>
+                <p v-if="log.error" class="error">{{ log.error }}</p>
+              </div>
+            </article>
+            <p v-if="!admin.mailLogs.length" class="muted small">Nog geen mail logs.</p>
+          </div>
+        </section>
       </section>
 
       <section v-else class="editor empty muted">Selecteer een template.</section>
@@ -95,20 +113,25 @@ const admin = useAdminStore()
 const selected = ref(null)
 const availableVariables = ref([])
 const variableText = ref('')
-const saving = ref(false)
 const sending = ref(false)
 const sendTo = ref('')
 const sendStatus = ref('')
 const sendError = ref('')
-const sendVariables = ref(JSON.stringify({
+const defaultVariables = {
   naam: 'Test klant',
   bedrijf: 'TD Development',
+  email: 'testklant@example.nl',
+  telefoon: '+31 6 00000000',
+  website: 'example.nl',
+  contactpersoon: 'Test klant',
   login_url: `${window.location.origin}/login`,
-  reset_url: `${window.location.origin}/login`,
+  reset_url: `${window.location.origin}/wachtwoord-resetten?token=voorbeeld-token`,
   project: 'Website',
   bericht: 'Dit is een testbericht.',
-}, null, 2))
-const { savingKey, savedAt, error, queue, flush } = useAutosave((template) => admin.updateMailTemplate(template))
+  datum: new Date().toLocaleDateString('nl-NL'),
+}
+const sendVariables = ref(JSON.stringify(defaultVariables, null, 2))
+const { savingKey, savedAt, error, queue } = useAutosave((template) => admin.updateMailTemplate(template))
 
 const currentVariables = computed(() => variableText.value.split(',').map((v) => v.trim()).filter(Boolean))
 
@@ -125,6 +148,11 @@ function select(template) {
   variableText.value = (selected.value.variables || []).join(', ')
   sendStatus.value = ''
   sendError.value = ''
+  const vars = {}
+  for (const key of (selected.value.variables || [])) {
+    if (key in defaultVariables) vars[key] = defaultVariables[key]
+  }
+  sendVariables.value = JSON.stringify(vars, null, 2)
 }
 
 function updateVariables() {
@@ -152,17 +180,6 @@ function queueTemplate() {
   nextTick(() => queue(selected.value.id, { ...selected.value, variables: currentVariables.value }))
 }
 
-async function save() {
-  if (!selected.value) return
-  saving.value = true
-  try {
-    const saved = await flush(selected.value.id, { ...selected.value, variables: currentVariables.value })
-    select(saved)
-  } finally {
-    saving.value = false
-  }
-}
-
 async function sendTemplate() {
   if (!selected.value) return
   sending.value = true
@@ -174,11 +191,28 @@ async function sendTemplate() {
     catch { throw new Error('Variabelen moeten geldige JSON zijn.') }
     await admin.sendMailTemplate(selected.value.id, { to: sendTo.value, variables })
     sendStatus.value = 'Mail verzonden.'
+    await admin.loadMailLogs()
   } catch (e) {
     sendError.value = e.message
+    await admin.loadMailLogs()
   } finally {
     sending.value = false
   }
+}
+
+async function loadLogs() {
+  await admin.loadMailLogs()
+}
+
+function formatDate(value) {
+  if (!value) return ''
+  return new Date(value).toLocaleString('nl-NL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 </script>
 
@@ -229,6 +263,19 @@ async function sendTemplate() {
 .actions { display: flex; gap: 10px; align-items: center; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
 .send-box { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border); }
 .send-box h2 { font-size: 1.1rem; }
+.logs-box { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border); }
+.logs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.logs-head h2 { font-size: 1.1rem; margin: 0; }
+.log-list { display: grid; gap: 8px; max-height: 420px; overflow: auto; }
+.log-row {
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--field-bg);
+}
+.log-row.success { border-color: var(--success-border); background: var(--success-bg); }
+.log-row.error { border-color: var(--danger-border); background: var(--danger-bg); }
+.log-row code { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72rem; word-break: break-all; }
 .json-area { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.86rem; }
 .empty { padding: 60px; text-align: center; }
 .error { color: var(--danger); }

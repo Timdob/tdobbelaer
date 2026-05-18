@@ -5,9 +5,6 @@
         <h1>Site instellingen</h1>
         <p class="muted">Brand, contact, kleuren en mailconfiguratie.</p>
       </div>
-      <button class="btn btn-primary" @click="save" :disabled="saving">
-        {{ saving ? 'Opslaan...' : 'Opslaan' }}
-      </button>
     </header>
 
     <p v-if="status || savingKey" class="status">{{ savingKey ? 'Autosave...' : status }}</p>
@@ -81,6 +78,23 @@
           <div><label class="label">Wachtwoord</label><input v-model="form.mailPassword" type="password" class="input" @input="queueForm" /></div>
           <div><label class="label">Afzender (from)</label><input v-model="form.mailFrom" class="input" @input="queueForm" /></div>
         </div>
+        <div class="mail-options mt">
+          <label class="check">
+            <input v-model="form.mailSecure" type="checkbox" @change="queueForm" />
+            SSL/direct secure
+          </label>
+          <label class="check">
+            <input v-model="form.mailStarttls" type="checkbox" @change="queueForm" />
+            STARTTLS/TLS
+          </label>
+          <label class="check">
+            <input v-model="form.mailRejectUnauthorized" type="checkbox" @change="queueForm" />
+            Certificaat controleren
+          </label>
+        </div>
+        <p class="muted small section-note">
+          Voor poort 587: SSL uit, STARTTLS aan. Als je server een certificaat voor een andere hostnaam gebruikt, zet certificaatcontrole uit of gebruik de hostnaam die op het certificaat staat.
+        </p>
       </section>
     </div>
   </div>
@@ -96,31 +110,29 @@ import { useAutosave } from '../../composables/autosave'
 const admin = useAdminStore()
 const site = useSiteStore()
 const form = ref(null)
-const saving = ref(false)
 const status = ref('')
-const { savingKey, savedAt, error, queue, flush } = useAutosave((settings) => admin.saveSettings(settings))
+const { savingKey, savedAt, error, queue } = useAutosave((settings) => admin.saveSettings(settings))
 
 onMounted(async () => {
   await admin.load()
-  form.value = { ...admin.settings }
+  form.value = normalizeSettings(admin.settings)
   previewTheme()
 })
 
 watch(() => admin.settings, (s) => {
   if (s && !form.value) {
-    form.value = { ...s }
+    form.value = normalizeSettings(s)
     previewTheme()
   }
 })
 
-async function save() {
-  saving.value = true; status.value = ''
-  try {
-    await flush('settings', { ...form.value })
-    status.value = 'Opgeslagen.'
-    setTimeout(() => (status.value = ''), 2000)
-  } catch (e) { status.value = 'Fout: ' + e.message }
-  finally { saving.value = false }
+function normalizeSettings(settings) {
+  return {
+    ...settings,
+    mailSecure: Boolean(settings?.mailSecure),
+    mailStarttls: settings?.mailStarttls !== false,
+    mailRejectUnauthorized: settings?.mailRejectUnauthorized !== false,
+  }
 }
 
 function queueForm() {
@@ -149,6 +161,8 @@ function previewTheme() {
 .card h2 { font-size: 1.1rem; margin-bottom: 18px; }
 .section-note { margin-top: -8px; margin-bottom: 0; }
 .mt { margin-top: 16px; }
+.mail-options { display: flex; flex-wrap: wrap; gap: 14px; }
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 700; }
 .size-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .hint { display: block; margin-bottom: 6px; color: var(--muted); font-size: 0.78rem; font-weight: 700; }
 

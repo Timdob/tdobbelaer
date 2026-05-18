@@ -27,11 +27,34 @@
           :class="message.role"
         >
           <span>{{ message.role === 'admin' ? 'TD Development' : 'Jij' }}</span>
-          <p>{{ message.body }}</p>
+          <div v-if="message.role === 'visitor'" class="message-actions">
+            <button type="button" @click="editOwnMessage(message)">Wijzig</button>
+            <button type="button" @click="deleteOwnMessage(message)">Verwijder</button>
+          </div>
+          <p v-if="message.body">
+            <template v-for="part in linkParts(message.body)" :key="part.key">
+              <a v-if="part.url" :href="part.text" target="_blank" rel="noopener noreferrer">{{ part.text }}</a>
+              <template v-else>{{ part.text }}</template>
+            </template>
+          </p>
+          <a
+            v-if="message.attachmentUrl"
+            class="chat-attachment"
+            :href="message.attachmentUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img v-if="isImage(message)" :src="message.attachmentUrl" :alt="message.attachmentName || 'Bijlage'" />
+            <span v-else>{{ message.attachmentName || 'Bijlage openen' }}</span>
+          </a>
         </div>
       </div>
 
       <form class="chat-form" @submit.prevent="sendMessage">
+        <input ref="fileInput" type="file" class="file-input" @change="onFileChange" />
+        <button class="attach-btn" type="button" :disabled="sending" aria-label="Bijlage toevoegen" @click="fileInput?.click()">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.5 12.5 5.8-5.8a3 3 0 0 1 4.2 4.2l-7.1 7.1a5 5 0 0 1-7.1-7.1l7.4-7.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <input
           v-model="body"
           class="input"
@@ -39,8 +62,12 @@
           placeholder="Typ je bericht..."
           :disabled="sending"
         />
-        <button class="btn btn-primary" type="submit" :disabled="sending || !body.trim()">Stuur</button>
+        <button class="btn btn-primary" type="submit" :disabled="sending || (!body.trim() && !attachment)">Stuur</button>
       </form>
+      <div v-if="attachment" class="selected-file">
+        <span>{{ attachment.attachmentName }}</span>
+        <button type="button" @click="attachment = null">Verwijder</button>
+      </div>
       <p v-if="error" class="chat-error">{{ error }}</p>
     </section>
   </div>
@@ -50,6 +77,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useSiteStore } from '../../stores/site'
 import { connectSocket } from '../../composables/socket'
+import { api } from '../../composables/api'
 
 const site = useSiteStore()
 const open = ref(false)
@@ -61,6 +89,8 @@ const messages = ref([])
 const session = ref(null)
 const unread = ref(0)
 const messagesEl = ref(null)
+const fileInput = ref(null)
+const attachment = ref(null)
 let socket = null
 
 const chatAvailable = computed(() => Boolean(site.settings?.chatEnabled))
@@ -107,7 +137,7 @@ async function openChat() {
 }
 
 async function sendMessage() {
-  if (!body.value.trim()) return
+  if (!body.value.trim() && !attachment.value) return
   sending.value = true
   error.value = ''
   try {
@@ -116,13 +146,61 @@ async function sendMessage() {
       visitorId: visitorId(),
       sessionId: session.value?.id,
       body: body.value,
+      ...(attachment.value || {}),
     })
     body.value = ''
+    attachment.value = null
+    if (fileInput.value) fileInput.value.value = ''
   } catch (e) {
     error.value = e.message
   } finally {
     sending.value = false
   }
+}
+
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('Bestand lezen mislukt.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function onFileChange(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  sending.value = true
+  error.value = ''
+  try {
+    const dataUrl = await readFile(file)
+    attachment.value = await api.post('/api/chat/upload', { fileName: file.name, dataUrl })
+  } catch (e) {
+    error.value = e.message
+    event.target.value = ''
+  } finally {
+    sending.value = false
+  }
+}
+
+function isImage(message) {
+  return String(message.attachmentType || '').startsWith('image/')
+}
+
+function linkParts(text = '') {
+  const parts = []
+  const pattern = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi
+  let last = 0
+  let index = 0
+  String(text).replace(pattern, (match, _all, offset) => {
+    if (offset > last) parts.push({ key: `${index++}-text`, text: text.slice(last, offset) })
+    const href = match.startsWith('http') ? match : `https://${match}`
+    parts.push({ key: `${index++}-url`, text: href, url: true })
+    last = offset + match.length
+    return match
+  })
+  if (last < text.length) parts.push({ key: `${index++}-text`, text: text.slice(last) })
+  return parts.length ? parts : [{ key: 'text', text }]
 }
 
 function onMessage(message) {
@@ -131,6 +209,50 @@ function onMessage(message) {
   if (open.value) markRead()
   else if (message.role === 'admin') unread.value += 1
   scrollDown()
+}
+
+function onMessageUpdated(message) {
+  if (!session.value || Number(message.sessionId) !== Number(session.value.id)) return
+  messages.value = messages.value.map((item) => item.id === message.id ? message : item)
+}
+
+function onMessageDeleted({ id, sessionId } = {}) {
+  if (!session.value || Number(sessionId) !== Number(session.value.id)) return
+  messages.value = messages.value.filter((item) => item.id !== id)
+}
+
+function onChatDeleted({ sessionId } = {}) {
+  if (!session.value || Number(sessionId) !== Number(session.value.id)) return
+  session.value = null
+  messages.value = []
+  unread.value = 0
+  open.value = false
+}
+
+async function editOwnMessage(message) {
+  const next = window.prompt('Bericht wijzigen', message.body || '')
+  if (next === null) return
+  try {
+    await emitAck('chat:visitor:edit', {
+      visitorId: visitorId(),
+      messageId: message.id,
+      body: next,
+    })
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+async function deleteOwnMessage(message) {
+  if (!window.confirm('Dit bericht verwijderen?')) return
+  try {
+    await emitAck('chat:visitor:delete', {
+      visitorId: visitorId(),
+      messageId: message.id,
+    })
+  } catch (e) {
+    error.value = e.message
+  }
 }
 
 function markRead() {
@@ -154,6 +276,9 @@ onMounted(() => {
   socket.on('connect', () => { connected.value = true })
   socket.on('disconnect', () => { connected.value = false })
   socket.on('chat:message', onMessage)
+  socket.on('chat:message:updated', onMessageUpdated)
+  socket.on('chat:message:deleted', onMessageDeleted)
+  socket.on('chat:deleted', onChatDeleted)
   window.addEventListener('td:open-chat', openChat)
 })
 
@@ -162,6 +287,9 @@ onBeforeUnmount(() => {
   socket.off('connect')
   socket.off('disconnect')
   socket.off('chat:message', onMessage)
+  socket.off('chat:message:updated', onMessageUpdated)
+  socket.off('chat:message:deleted', onMessageDeleted)
+  socket.off('chat:deleted', onChatDeleted)
   window.removeEventListener('td:open-chat', openChat)
 })
 </script>
@@ -270,7 +398,24 @@ onBeforeUnmount(() => {
   font-size: 0.72rem;
   font-weight: 700;
 }
-.chat-message p {
+.message-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.message-actions button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0;
+}
+.message-actions button:hover {
+  color: var(--accent);
+}
+.chat-message p,
+.chat-attachment {
   margin: 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -280,25 +425,77 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.chat-message p a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chat-attachment {
+  display: block;
+  padding: 8px;
+  text-decoration: none;
+}
+.chat-attachment img {
+  max-width: 210px;
+  max-height: 160px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.chat-attachment span {
+  color: var(--accent);
+}
 .chat-message.visitor {
   align-self: flex-end;
   align-items: flex-end;
 }
-.chat-message.visitor p {
+.chat-message.visitor p,
+.chat-message.visitor .chat-attachment {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--text-inverse);
 }
 .chat-form {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   gap: 8px;
   padding: 12px;
   border-top: 1px solid var(--border);
 }
+.file-input {
+  display: none;
+}
+.attach-btn {
+  width: 42px;
+  min-height: 42px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--field-bg);
+  color: var(--text);
+}
+.attach-btn svg {
+  width: 20px;
+  height: 20px;
+}
 .chat-form .btn {
   min-height: 42px;
   padding-inline: 14px;
+}
+.selected-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 12px 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.selected-file button {
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font-weight: 800;
 }
 .chat-error {
   margin: 0;

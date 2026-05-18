@@ -191,9 +191,6 @@
           </div>
 
           <div class="actions">
-            <button class="btn" @click="save(b)" :disabled="busy === b.id">
-              {{ busy === b.id ? 'Opslaan...' : 'Nu opslaan' }}
-            </button>
             <button class="btn btn-ghost danger" @click="remove(b.id)">Verwijderen</button>
             <span v-if="savingKey === b.id" class="muted small">Autosave...</span>
           </div>
@@ -214,14 +211,13 @@ import ImageUpload from '../../components/admin/ImageUpload.vue'
 import { useAutosave } from '../../composables/autosave'
 
 const admin = useAdminStore()
-const busy = ref(null)
 const expanded = ref(new Set())
 const dragId = ref(null)
 const dragOverId = ref(null)
 const isEditing = ref(false)
 
 const sortedBlocks = computed(() => [...admin.blocks].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)))
-const { savingKey, savedAt, error, queue, flush } = useAutosave((block) => admin.updateBlock(block))
+const { savingKey, savedAt, error, queue } = useAutosave((block) => admin.updateBlock(block))
 
 const typeOptions = [
   { value: 'text', label: 'Tekst' },
@@ -385,7 +381,6 @@ function cleanForSave(b) {
 }
 
 function queueSave(block) { nextTick(() => queue(block.id, cleanForSave(block))) }
-async function save(b) { busy.value = b.id; try { await flush(b.id, cleanForSave(b)) } finally { busy.value = null } }
 async function remove(id) { if (confirm('Blok verwijderen?')) await admin.deleteBlock(id) }
 
 // Drag & drop reordering

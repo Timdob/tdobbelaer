@@ -190,6 +190,12 @@ p.lead { font-size: 1.08rem; color: var(--muted); max-width: 680px; }
   background: var(--surface-2); border: 1px solid var(--border);
   font-size: 0.75rem; color: var(--muted);
 }
+.tag.status-actief,
+.tag.status-live {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
 
 .badge {
   display: inline-block;

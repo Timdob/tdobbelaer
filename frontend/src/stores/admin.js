@@ -13,12 +13,15 @@ export const useAdminStore = defineStore('admin', {
     settings: null,
     heroSlides: [],
     packages: [],
+    serviceAddons: [],
     blocks: [],
     mailTemplates: [],
+    mailLogs: [],
     pages: [],
     media: [],
     customers: [],
     messages: [],
+    chatSessions: [],
     toasts: [],
     loaded: false,
     loading: false,
@@ -27,6 +30,7 @@ export const useAdminStore = defineStore('admin', {
   }),
   getters: {
     messagesUnread: (s) => s.messages.filter((m) => m.status === 'nieuw').length,
+    chatUnread: (s) => s.chatSessions.reduce((sum, sess) => sum + (sess.adminUnread || 0), 0),
   },
   actions: {
     async loadAll(force = false) {
@@ -79,7 +83,13 @@ export const useAdminStore = defineStore('admin', {
     async loadMailTemplates() {
       const r = await api.get('/api/admin/mail-templates')
       this.mailTemplates = r.templates
+      this.mailLogs = r.logs || []
       return r
+    },
+    async loadMailLogs() {
+      const r = await api.get('/api/admin/mail-logs')
+      this.mailLogs = r.logs || []
+      return this.mailLogs
     },
     async updateMailTemplate(template) {
       const r = await api.put(`/api/admin/mail-templates/${template.id}`, template)
@@ -130,6 +140,21 @@ export const useAdminStore = defineStore('admin', {
       await refreshPublicSite()
     },
 
+    async createServiceAddon(item) {
+      const r = await api.post('/api/admin/service-addons', item)
+      this.serviceAddons.push(r)
+      return r
+    },
+    async updateServiceAddon(item) {
+      const r = await api.put(`/api/admin/service-addons/${item.id}`, item)
+      this._replace('serviceAddons', r)
+      return r
+    },
+    async deleteServiceAddon(id) {
+      await api.del(`/api/admin/service-addons/${id}`)
+      this.serviceAddons = this.serviceAddons.filter((x) => x.id !== id)
+    },
+
     async createBlock(b) {
       const r = await api.post('/api/admin/blocks', b)
       this.blocks.push(r)
@@ -149,7 +174,7 @@ export const useAdminStore = defineStore('admin', {
     },
 
     async createCustomer(c) { const r = await api.post('/api/admin/customers', c); this.customers.push(r); return r },
-    async updateCustomer(c) { const r = await api.put(`/api/admin/customers/${c.id}`, c); this._replace('customers', r); return r },
+    async updateCustomer(c) { const r = await api.put(`/api/admin/customers/${c.id}`, c); return r },
     async deleteCustomer(id) { await api.del(`/api/admin/customers/${id}`); this.customers = this.customers.filter((x) => x.id !== id) },
 
     async createService(customerId, s) {
@@ -160,8 +185,6 @@ export const useAdminStore = defineStore('admin', {
     },
     async updateService(customerId, s) {
       const r = await api.put(`/api/admin/services/${s.id}`, s)
-      const c = this.customers.find((x) => x.id === customerId)
-      if (c) c.services = c.services.map((x) => x.id === r.id ? r : x)
       return r
     },
     async deleteService(customerId, id) {
@@ -205,17 +228,45 @@ export const useAdminStore = defineStore('admin', {
       const onQuoteUpdate = (payload) => {
         this.toast(payload?.message || 'Offerte bijgewerkt', 'info')
       }
-      const onCustomerUpdate = () => this.load(true)
+      const refreshChatSessions = async () => {
+        try {
+          const r = await api.get('/api/admin/chat/sessions')
+          this.chatSessions = r.sessions || []
+        } catch {}
+      }
+
+      const onChatMessage = async (message) => {
+        const prevUnread = this.chatUnread
+        await refreshChatSessions()
+        if (this.chatUnread > prevUnread) {
+          const sess = this.chatSessions.find((s) => Number(s.id) === Number(message?.sessionId))
+          const name = sess?.visitorName || sess?.visitorEmail || 'Websitebezoeker'
+          this.toast(`Nieuw chatbericht van ${name}`, 'chat')
+        }
+      }
+
+      const onChatSessions = (items) => {
+        const prevUnread = this.chatUnread
+        this.chatSessions = items || []
+        if (this.chatUnread > prevUnread) {
+          this.toast('Nieuw chatbericht ontvangen', 'chat')
+        }
+      }
+
+      socket.on('chat:message', onChatMessage)
+      socket.on('chat:sessions', onChatSessions)
 
       socket.on('nieuw-bericht', onNewMessage)
       socket.on('offerte-update', onQuoteUpdate)
-      socket.on('customer:updated', onCustomerUpdate)
       this.realtimeUnsubscribers = [
         () => socket.off('messages:updated', refreshMessages),
         () => socket.off('nieuw-bericht', onNewMessage),
         () => socket.off('offerte-update', onQuoteUpdate),
-        () => socket.off('customer:updated', onCustomerUpdate),
+        () => socket.off('chat:message', onChatMessage),
+        () => socket.off('chat:sessions', onChatSessions),
       ]
+
+      refreshChatSessions()
     },
 
     stopRealtime() {

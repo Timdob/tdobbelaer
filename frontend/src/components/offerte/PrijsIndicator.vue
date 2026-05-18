@@ -12,7 +12,7 @@
     </div>
     <p class="muted small note">
       {{ offerte.gekozenPakket
-        ? 'Dit pakket is meegenomen vanuit je keuze op de homepage. Je kunt je wensen nog verder aanvullen.'
+        ? 'Pakketprijs als basis, extra wensen worden daar bovenop berekend. Definitieve prijs na gesprek op maat.'
         : 'Een ruwe schatting op basis van jouw keuzes. De definitieve prijs hangt af van de inhoud; je krijgt een offerte op maat.' }}
     </p>
   </aside>

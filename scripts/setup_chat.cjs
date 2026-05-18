@@ -34,8 +34,14 @@ const p = new Pool({
     session_id integer not null references chat_sessions(id) on delete cascade,
     role text not null,
     body text not null,
+    attachment_url text not null default '',
+    attachment_type text not null default '',
+    attachment_name text not null default '',
     created_at timestamptz not null default now()
   )`)
+  await p.query("alter table if exists chat_messages add column if not exists attachment_url text not null default ''")
+  await p.query("alter table if exists chat_messages add column if not exists attachment_type text not null default ''")
+  await p.query("alter table if exists chat_messages add column if not exists attachment_name text not null default ''")
   await p.query('create index if not exists chat_messages_session_idx on chat_messages (session_id, created_at)')
 
   console.log('Chat tables + columns ready')

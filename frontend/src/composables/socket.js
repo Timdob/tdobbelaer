@@ -5,7 +5,7 @@ let socket = null
 
 export function getSocket() {
   if (!socket) {
-    socket = io('/', { autoConnect: false, transports: ['websocket', 'polling'] })
+    socket = io('/', { autoConnect: false, transports: ['polling', 'websocket'], upgrade: true })
   }
   return socket
 }

@@ -52,12 +52,15 @@ async function createSchema() {
       mail_user text not null default '',
       mail_password text not null default '',
       mail_from text not null default '',
-      theme_bg text not null default '#111827',
-      theme_surface text not null default '#1b2235',
-      theme_text text not null default '#e8eaf2',
-      theme_muted text not null default '#9aa3bb',
-      theme_accent text not null default '#7c5cff',
-      theme_accent_2 text not null default '#22d3ee',
+      mail_secure boolean not null default false,
+      mail_starttls boolean not null default true,
+      mail_reject_unauthorized boolean not null default true,
+      theme_bg text not null default '#f3eadb',
+      theme_surface text not null default '#fffaf1',
+      theme_text text not null default '#132033',
+      theme_muted text not null default '#526172',
+      theme_accent text not null default '#0f766e',
+      theme_accent_2 text not null default '#b56f16',
       footer_text text not null default '',
       quote_config jsonb,
       chat_enabled boolean not null default false,
@@ -114,6 +117,21 @@ async function createSchema() {
       cta_label text not null default 'Vraag offerte aan',
       cta_url text not null default '/contact',
       highlighted boolean not null default false,
+      enabled boolean not null default true,
+      sort_order integer not null default 0,
+      updated_at timestamptz not null default now()
+    )
+  `)
+
+  await q(`
+    create table service_addons (
+      id serial primary key,
+      key text unique not null,
+      name text not null,
+      price numeric(10,2) not null default 0,
+      period text not null default 'maand',
+      description text not null default '',
+      features jsonb not null default '[]'::jsonb,
       enabled boolean not null default true,
       sort_order integer not null default 0,
       updated_at timestamptz not null default now()
@@ -221,6 +239,22 @@ async function createSchema() {
   `)
 
   await q(`
+    create table mail_logs (
+      id serial primary key,
+      source text not null default 'unknown',
+      status text not null default 'error',
+      recipient text not null default '',
+      sender text not null default '',
+      subject text not null default '',
+      template_key text not null default '',
+      related_id text not null default '',
+      message_id text not null default '',
+      error text not null default '',
+      created_at timestamptz not null default now()
+    )
+  `)
+
+  await q(`
     create table chat_sessions (
       id serial primary key,
       visitor_id text not null,
@@ -242,6 +276,9 @@ async function createSchema() {
       session_id integer not null references chat_sessions(id) on delete cascade,
       role text not null check (role in ('visitor','admin','system')),
       body text not null,
+      attachment_url text not null default '',
+      attachment_type text not null default '',
+      attachment_name text not null default '',
       created_at timestamptz not null default now()
     )
   `)
@@ -310,6 +347,14 @@ async function seed() {
       'Onbeperkte pagina\'s\nMaatwerk modules\nAPI integraties\nRealtime updates\nPrioriteit support',
       'Kies Enterprise', false,
     ],
+  )
+
+  await q(
+    `insert into service_addons (key, name, price, period, description, features, enabled, sort_order) values
+      ('seo-optimalisatie','SEO optimalisatie',149,'maand','Technische SEO, contentchecks en maandelijkse optimalisaties voor je bestaande website.','["Technische scan","Zoekwoordenadvies","Meta titles/descriptions","Maandelijkse rapportage"]'::jsonb,true,1),
+      ('website-onderhoud','Website onderhoud',89,'maand','Updates, kleine verbeteringen en periodieke controle van je bestaande website.','["Updates","Back-up controle","Kleine tekstwijzigingen","Veiligheidscheck"]'::jsonb,true,2),
+      ('hosting-beheer','Hosting beheer',49,'maand','Beheer van hosting, domeininstellingen en technische bereikbaarheid.','["Hostingcontrole","DNS hulp","SSL controle","Support"]'::jsonb,true,3),
+      ('analytics-rapportage','Analytics rapportage',59,'maand','Inzicht in bezoekers, conversies en verbeterpunten voor je website.','["Analytics inrichting","Maandrapport","Conversiepunten","Adviespunten"]'::jsonb,true,4)`,
   )
 
   await q(

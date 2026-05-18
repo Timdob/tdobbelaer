@@ -57,14 +57,28 @@ const sourceMode = ref(false)
 
 function setContent(html) {
   if (!editor.value || sourceMode.value) return
-  if (editor.value.innerHTML !== (html || '')) editor.value.innerHTML = html || ''
+  // Vervang {placeholders} in href tijdelijk door data-href zodat de browser ze niet escapet
+  const safe = (html || '').replace(/href="([^"]*)"/g, (match, href) => {
+    if (href.includes('{')) return `href="${href.replace(/\{/g, '%7B').replace(/\}/g, '%7D')}"`
+    return match
+  })
+  if (editor.value.innerHTML !== safe) editor.value.innerHTML = safe
 }
 
 onMounted(() => setContent(props.modelValue))
 watch(() => props.modelValue, (value) => setContent(value))
 
 function onInput() {
-  emit('update:modelValue', editor.value?.innerHTML || '')
+  const html = editor.value?.innerHTML || ''
+  emit('update:modelValue', restoreTemplatePlaceholders(html))
+}
+
+function restoreTemplatePlaceholders(html) {
+  // De browser escapet { en } in href-attributen naar %7B / %7D — herstel die zodat {variabelen} werkbaar blijven
+  return html.replace(/href="([^"]+)"/g, (match, href) => {
+    const restored = href.replace(/%7B/gi, '{').replace(/%7D/gi, '}')
+    return `href="${restored}"`
+  })
 }
 
 function exec(command, value = null) {

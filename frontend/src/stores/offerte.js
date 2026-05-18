@@ -35,14 +35,14 @@ export const DEFAULT_QUOTE_CONFIG = {
   { id: 'anders', icon: 'AD', label: 'Anders' },
   ],
   wishes: [
-  { id: 'website', icon: 'WEB', label: 'Informatie website' },
-  { id: 'afspraken', icon: 'CAL', label: 'Online afspraken' },
-  { id: 'portfolio', icon: 'FOL', label: 'Menu / Portfolio' },
-  { id: 'webshop', icon: 'SHOP', label: 'Webshop' },
-  { id: 'blog', icon: 'BLOG', label: 'Blog / Nieuws' },
-  { id: 'klantportaal', icon: 'PORT', label: 'Klantportaal' },
-  { id: 'reserveringen', icon: 'BOOK', label: 'Reserveringssysteem' },
-  { id: 'whatsapp', icon: 'APP', label: 'WhatsApp integratie' },
+  { id: 'website', icon: 'WEB', label: 'Informatie website', priceMin: 0, priceMax: 0 },
+  { id: 'afspraken', icon: 'CAL', label: 'Online afspraken', priceMin: 0, priceMax: 0 },
+  { id: 'portfolio', icon: 'FOL', label: 'Menu / Portfolio', priceMin: 0, priceMax: 0 },
+  { id: 'webshop', icon: 'SHOP', label: 'Webshop', priceMin: 500, priceMax: 800 },
+  { id: 'blog', icon: 'BLOG', label: 'Blog / Nieuws', priceMin: 0, priceMax: 0 },
+  { id: 'klantportaal', icon: 'PORT', label: 'Klantportaal', priceMin: 300, priceMax: 500 },
+  { id: 'reserveringen', icon: 'BOOK', label: 'Reserveringssysteem', priceMin: 200, priceMax: 400 },
+  { id: 'whatsapp', icon: 'APP', label: 'WhatsApp integratie', priceMin: 0, priceMax: 0 },
   ],
   fields: {
     nameLabel: 'Naam',
@@ -57,6 +57,13 @@ export const DEFAULT_QUOTE_CONFIG = {
   },
   liveOptions: ['zo snel mogelijk', 'binnen 1 maand', 'binnen 3 maanden', 'nog aan het orienteren'],
   extraQuestions: [],
+  pricing: {
+    baseMin: 799,
+    baseMax: 1299,
+    extraMin: 200,
+    extraMax: 300,
+    extraThreshold: 4,
+  },
 }
 
 export const BRANCHES = DEFAULT_QUOTE_CONFIG.branches
@@ -85,6 +92,7 @@ const mergeConfig = (config) => {
     fields: { ...DEFAULT_QUOTE_CONFIG.fields, ...(c.fields || {}) },
     liveOptions: Array.isArray(c.liveOptions) && c.liveOptions.length ? c.liveOptions : DEFAULT_QUOTE_CONFIG.liveOptions,
     extraQuestions: Array.isArray(c.extraQuestions) ? c.extraQuestions : [],
+    pricing: { ...DEFAULT_QUOTE_CONFIG.pricing, ...(c.pricing || {}) },
   }
 }
 
@@ -107,16 +115,26 @@ export const useOfferteStore = defineStore('offerte', {
     brancheLabel: (s) => mergeConfig(s.config).branches.find((b) => b.id === s.branche)?.label || '',
     wensenLabels: (s) => s.wensen.map((id) => mergeConfig(s.config).wishes.find((w) => w.id === id)?.label).filter(Boolean),
     prijsIndicatie: (s) => {
-      if (s.gekozenPakket?.price) {
-        const price = Number(s.gekozenPakket.price)
-        return { min: price, max: price }
+      const cfg = mergeConfig(s.config)
+      const pricing = cfg.pricing
+      let min = s.gekozenPakket?.price
+        ? Number(s.gekozenPakket.price)
+        : Number(pricing.baseMin || 799)
+      let max = s.gekozenPakket?.price
+        ? Number(s.gekozenPakket.price)
+        : Number(pricing.baseMax || 1299)
+      const pakketWishIds = s.gekozenPakket?.wishIds || []
+      for (const wish of cfg.wishes) {
+        if (s.wensen.includes(wish.id) && !pakketWishIds.includes(wish.id)) {
+          min += Number(wish.priceMin || 0)
+          max += Number(wish.priceMax || 0)
+        }
       }
-      let min = 799
-      let max = 1299
-      if (s.wensen.includes('webshop')) { min += 500; max += 800 }
-      if (s.wensen.includes('klantportaal')) { min += 300; max += 500 }
-      if (s.wensen.includes('reserveringen')) { min += 200; max += 400 }
-      if (s.wensen.length > 4) { min += 200; max += 300 }
+      const threshold = Number(pricing.extraThreshold || 4)
+      if (s.wensen.length > threshold) {
+        min += Number(pricing.extraMin || 0)
+        max += Number(pricing.extraMax || 0)
+      }
       return { min, max }
     },
     pakketNaam: (s) => {
@@ -142,7 +160,12 @@ export const useOfferteStore = defineStore('offerte', {
         period: pkg.period || '',
         description: pkg.description || '',
         features: pkg.features || '',
+        wishIds: Array.isArray(pkg.wishIds) ? pkg.wishIds : [],
       } : null
+      // Vink wensen die bij het pakket horen automatisch aan
+      if (pkg?.wishIds?.length && !this.wensen.length) {
+        this.wensen = [...pkg.wishIds]
+      }
     },
     toggleWens(id) {
       const index = this.wensen.indexOf(id)

@@ -5,10 +5,11 @@
         <h1>Offerte builder</h1>
         <p class="muted">Beheer alle stappen, opties en extra vragen van de offerte-configurator.</p>
       </div>
-      <button class="btn btn-primary" :disabled="saving" @click="save">
-        {{ saving ? 'Opslaan...' : 'Configuratie opslaan' }}
-      </button>
     </header>
+
+    <p v-if="savingKey === 'quote'" class="status">Autosave...</p>
+    <p v-else-if="savedAt" class="muted small">Laatst automatisch opgeslagen om {{ savedAt }}.</p>
+    <p v-if="error" class="error">{{ error }}</p>
 
     <section class="panel">
       <h2>Stapteksten</h2>
@@ -47,12 +48,50 @@
         <h2>Stap 2: wensen</h2>
         <button class="btn btn-ghost" @click="addWish">Wens toevoegen</button>
       </div>
+      <div class="wishes-header option-row wish-row">
+        <span class="muted small">Icon</span>
+        <span class="muted small">ID</span>
+        <span class="muted small">Label</span>
+        <span class="muted small">+ Min (€)</span>
+        <span class="muted small">+ Max (€)</span>
+        <span></span>
+      </div>
       <div class="option-list">
-        <div v-for="(item, index) in config.wishes" :key="item.id" class="option-row">
+        <div v-for="(item, index) in config.wishes" :key="item.id" class="option-row wish-row">
           <input v-model="item.icon" class="input small-input" placeholder="Icon" />
           <input v-model="item.id" class="input" placeholder="id" />
           <input v-model="item.label" class="input" placeholder="Label" />
+          <input v-model.number="item.priceMin" type="number" min="0" class="input" placeholder="0" />
+          <input v-model.number="item.priceMax" type="number" min="0" class="input" placeholder="0" />
           <button class="btn btn-ghost danger" @click="remove(config.wishes, index)">Verwijder</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Prijsindicatie instellingen</h2>
+      <p class="muted small">Basisbedrag waarop alle toeslagen worden opgeteld. De extra toeslag wordt toegepast als het aantal wensen boven de drempel uitkomt.</p>
+      <div class="grid grid-2 mt">
+        <div>
+          <label class="label">Basis minimum (€)</label>
+          <input v-model.number="config.pricing.baseMin" type="number" min="0" class="input" />
+        </div>
+        <div>
+          <label class="label">Basis maximum (€)</label>
+          <input v-model.number="config.pricing.baseMax" type="number" min="0" class="input" />
+        </div>
+        <div>
+          <label class="label">Extra toeslag minimum (€)</label>
+          <input v-model.number="config.pricing.extraMin" type="number" min="0" class="input" />
+        </div>
+        <div>
+          <label class="label">Extra toeslag maximum (€)</label>
+          <input v-model.number="config.pricing.extraMax" type="number" min="0" class="input" />
+        </div>
+        <div>
+          <label class="label">Drempel (aantal wensen)</label>
+          <input v-model.number="config.pricing.extraThreshold" type="number" min="1" class="input" />
+          <p class="muted small mt-4">Extra toeslag wordt toegevoegd als klant meer dan dit aantal wensen selecteert.</p>
         </div>
       </div>
     </section>
@@ -126,26 +165,30 @@
       </div>
     </section>
 
-    <p v-if="saved" class="status">Opgeslagen.</p>
-    <p v-if="error" class="error">{{ error }}</p>
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useAdminStore } from '../../stores/admin'
 import { DEFAULT_QUOTE_CONFIG } from '../../stores/offerte'
+import { useAutosave } from '../../composables/autosave'
 
 const admin = useAdminStore()
-const saving = ref(false)
-const saved = ref(false)
-const error = ref('')
 const config = reactive(clone(DEFAULT_QUOTE_CONFIG))
+const loaded = ref(false)
+const { savingKey, savedAt, error, queue } = useAutosave((value) => admin.saveQuoteConfig(value))
 
 onMounted(async () => {
   await admin.loadAll()
   Object.assign(config, merge(admin.settings?.quoteConfig))
+  loaded.value = true
 })
+
+watch(config, () => {
+  if (!loaded.value) return
+  nextTick(() => queue('quote', clone(config)))
+}, { deep: true })
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value))
@@ -160,6 +203,10 @@ function merge(value = {}) {
   merged.wishes = Array.isArray(value?.wishes) && value.wishes.length ? value.wishes : merged.wishes
   merged.liveOptions = Array.isArray(value?.liveOptions) && value.liveOptions.length ? value.liveOptions : merged.liveOptions
   merged.extraQuestions = Array.isArray(value?.extraQuestions) ? value.extraQuestions : []
+  merged.pricing = { ...DEFAULT_QUOTE_CONFIG.pricing, ...(value?.pricing || {}) }
+  if (Array.isArray(value?.wishes) && value.wishes.length) {
+    merged.wishes = value.wishes.map((w) => ({ priceMin: 0, priceMax: 0, ...w }))
+  }
   return merged
 }
 
@@ -183,20 +230,6 @@ function addQuestion() {
 
 function remove(list, index) {
   list.splice(index, 1)
-}
-
-async function save() {
-  saving.value = true
-  saved.value = false
-  error.value = ''
-  try {
-    await admin.saveQuoteConfig(clone(config))
-    saved.value = true
-  } catch (e) {
-    error.value = e.message
-  } finally {
-    saving.value = false
-  }
 }
 </script>
 
@@ -243,6 +276,12 @@ async function save() {
   gap: 10px;
   align-items: center;
 }
+.wish-row {
+  grid-template-columns: 90px 1fr 1.5fr 100px 100px auto;
+}
+.wishes-header { margin-bottom: 4px; }
+.mt { margin-top: 14px; }
+.mt-4 { margin-top: 4px; }
 .compact-row { grid-template-columns: 1fr auto; }
 .small-input { text-transform: uppercase; }
 .mt { margin-top: 14px; }
@@ -262,6 +301,8 @@ async function save() {
 @media (max-width: 1000px) {
   .steps-grid,
   .option-row,
+  .wish-row,
   .compact-row { grid-template-columns: 1fr; }
+  .wishes-header { display: none; }
 }
 </style>

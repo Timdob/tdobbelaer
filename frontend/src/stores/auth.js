@@ -5,6 +5,7 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('td_token') || '',
     user: JSON.parse(localStorage.getItem('td_user') || 'null'),
+    lastLogin: localStorage.getItem('td_last_login') || null,
   }),
   getters: {
     isAuth: (s) => Boolean(s.token),
@@ -43,6 +44,10 @@ export const useAuthStore = defineStore('auth', {
     setSession(token, user) {
       this.token = token
       this.user = user
+      if (user?.lastLogin !== undefined) {
+        this.lastLogin = user.lastLogin ?? null
+        localStorage.setItem('td_last_login', user.lastLogin ?? '')
+      }
       localStorage.setItem('td_token', token)
       localStorage.setItem('td_user', JSON.stringify(user))
       connectSocket()

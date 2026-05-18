@@ -40,9 +40,6 @@
           </div>
         </div>
         <div class="actions">
-          <button class="btn" @click="save(slide)" :disabled="busy === slide.id">
-            {{ busy === slide.id ? 'Opslaan...' : 'Nu opslaan' }}
-          </button>
           <button class="btn btn-ghost danger" @click="remove(slide.id)">Verwijderen</button>
           <span v-if="savingKey === slide.id" class="muted small">Autosave...</span>
         </div>
@@ -56,14 +53,13 @@
 </template>
 
 <script setup>
-import { nextTick, ref, onMounted } from 'vue'
+import { nextTick, onMounted } from 'vue'
 import { useAdminStore } from '../../stores/admin'
 import ImageUpload from '../../components/admin/ImageUpload.vue'
 import { useAutosave } from '../../composables/autosave'
 
 const admin = useAdminStore()
-const busy = ref(null)
-const { savingKey, savedAt, error, queue, flush } = useAutosave((slide) => admin.updateSlide(slide))
+const { savingKey, savedAt, error, queue } = useAutosave((slide) => admin.updateSlide(slide))
 
 onMounted(() => admin.load())
 
@@ -75,7 +71,6 @@ async function add() {
   })
 }
 function queueSave(slide) { nextTick(() => queue(slide.id, { ...slide })) }
-async function save(s) { busy.value = s.id; try { await flush(s.id, { ...s }) } finally { busy.value = null } }
 async function remove(id) { if (confirm('Slide verwijderen?')) await admin.deleteSlide(id) }
 </script>
 

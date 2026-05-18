@@ -51,25 +51,11 @@ function applyPackageFromQuery() {
     slugify(p.name) === value,
   )
   offerte.setPakket(pkg || { id: raw, name: raw })
-  if (offerte.wensen.length) return
-
-  const name = String(pkg?.name || value).toLowerCase()
-
-  if (name.includes('starter')) {
-    ;['website', 'portfolio'].forEach(addWens)
-  } else if (name.includes('business')) {
-    ;['website', 'portfolio', 'blog'].forEach(addWens)
-  } else if (name.includes('premium') || name.includes('growth') || name.includes('enterprise')) {
-    ;['website', 'klantportaal', 'reserveringen'].forEach(addWens)
-  }
+  // Wensen worden automatisch geladen via setPakket (pkg.wishIds)
 }
 
 function slugify(value) {
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '')
-}
-
-function addWens(id) {
-  if (!offerte.wensen.includes(id)) offerte.wensen.push(id)
 }
 
 function formatPrice(price) {

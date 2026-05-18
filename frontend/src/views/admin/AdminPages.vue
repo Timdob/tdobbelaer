@@ -259,7 +259,6 @@
               </section>
 
               <section class="panel actions-panel">
-                <button class="btn btn-primary" @click="save" :disabled="saving">{{ saving ? 'Opslaan...' : 'Nu opslaan' }}</button>
                 <router-link class="btn btn-ghost" :to="`/preview/${selected.id}`" target="_blank">Preview concept</router-link>
                 <a v-if="selected.published" class="btn btn-ghost" :href="safeSlug === 'home' ? '/' : `/${safeSlug}`" target="_blank">Bekijk live</a>
                 <button class="btn btn-ghost danger" @click="remove">Verwijderen</button>
@@ -285,7 +284,6 @@ const admin = useAdminStore()
 const route = useRoute()
 const router = useRouter()
 const selected = ref(null)
-const saving = ref(false)
 const origin = window.location.origin
 const tabs = [
   { id: 'content', label: 'Inhoud' },
@@ -294,7 +292,7 @@ const tabs = [
   { id: 'media', label: 'Media' },
 ]
 const activeTab = ref(tabs.some((tab) => tab.id === route.query.tab) ? route.query.tab : 'content')
-const { savingKey, savedAt, error, queue, flush } = useAutosave((page) => admin.updatePage(page))
+const { savingKey, savedAt, error, queue } = useAutosave((page) => admin.updatePage(page))
 
 const sortedPages = computed(() => [...admin.pages].sort((a, b) =>
   (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || '').localeCompare(String(b.title || '')),
@@ -422,17 +420,6 @@ async function add() {
   })
   select(page)
   activeTab.value = 'content'
-}
-
-async function save() {
-  if (!selected.value) return
-  saving.value = true
-  try {
-    const saved = await flush(selected.value.id, cleanPage(selected.value))
-    selected.value = normalizeSelected(saved)
-  } finally {
-    saving.value = false
-  }
 }
 
 async function remove() {

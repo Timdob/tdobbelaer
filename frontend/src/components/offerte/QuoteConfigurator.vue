@@ -2,7 +2,7 @@
   <div class="configurator card">
     <Bevestiging v-if="offerte.verzonden" @reset="resetConfigurator" />
 
-    <template v-else>
+    <template v-else-if="!showSummary">
       <StapIndicator
         :stap="offerte.huidigeStap"
         :labels="offerte.stepLabels"
@@ -26,7 +26,6 @@
         >
           Vorige
         </button>
-
         <button
           v-if="offerte.huidigeStap < 3"
           type="button"
@@ -36,17 +35,61 @@
         >
           Volgende stap
         </button>
-
         <button
           v-else
           type="button"
           class="btn btn-primary"
           :disabled="loading"
-          @click="submit"
+          @click="goToSummary"
         >
-          {{ loading ? 'Versturen...' : 'Offerte aanvragen' }}
+          Controleer aanvraag →
         </button>
       </footer>
+    </template>
+
+    <!-- Samenvatting vóór verzenden -->
+    <template v-else>
+      <div class="summary">
+        <span class="eyebrow">Bijna klaar</span>
+        <h2>Controleer je aanvraag</h2>
+        <p class="muted summary-lead">Klopt alles? Dan sturen we je aanvraag door.</p>
+
+        <dl class="summary-grid">
+          <dt>Branche</dt>
+          <dd>{{ offerte.brancheLabel }}</dd>
+          <dt>Wensen</dt>
+          <dd>{{ offerte.wensenLabels.join(', ') }}</dd>
+          <dt>Naam</dt>
+          <dd>{{ offerte.gegevens.naam }}</dd>
+          <dt>Bedrijf</dt>
+          <dd>{{ offerte.gegevens.bedrijfsnaam }}</dd>
+          <dt>E-mail</dt>
+          <dd>{{ offerte.gegevens.email }}</dd>
+          <dt v-if="offerte.gegevens.telefoon">Telefoon</dt>
+          <dd v-if="offerte.gegevens.telefoon">{{ offerte.gegevens.telefoon }}</dd>
+          <dt v-if="offerte.gegevens.extraInfo">Toelichting</dt>
+          <dd v-if="offerte.gegevens.extraInfo">{{ offerte.gegevens.extraInfo }}</dd>
+        </dl>
+
+        <div class="summary-price">
+          <span class="muted small">Richtprijs</span>
+          <div class="price-range">
+            <strong>€{{ format(offerte.prijsIndicatie.min) }}</strong>
+            <span class="muted"> – </span>
+            <strong>€{{ format(offerte.prijsIndicatie.max) }}</strong>
+          </div>
+          <span class="muted small">Definitieve prijs na gesprek op maat</span>
+        </div>
+
+        <p v-if="status" class="status" :class="{ error: failed }">{{ status }}</p>
+
+        <footer class="controls">
+          <button type="button" class="btn btn-ghost" @click="showSummary = false">Terug wijzigen</button>
+          <button type="button" class="btn btn-primary" :disabled="loading" @click="submit">
+            {{ loading ? 'Versturen...' : 'Aanvraag versturen' }}
+          </button>
+        </footer>
+      </div>
     </template>
   </div>
 </template>
@@ -67,6 +110,11 @@ const offerte = useOfferteStore()
 const loading = ref(false)
 const status = ref('')
 const failed = ref(false)
+const showSummary = ref(false)
+
+function format(n) {
+  return new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 }).format(n)
+}
 
 onMounted(() => {
   offerte.setConfig(site.settings?.quoteConfig)
@@ -78,6 +126,13 @@ function next() {
   status.value = ''
   failed.value = false
   offerte.volgendeStap()
+}
+
+function goToSummary() {
+  const validation = validate()
+  status.value = validation
+  failed.value = Boolean(validation)
+  if (!validation) showSummary.value = true
 }
 
 function validate() {
@@ -124,6 +179,7 @@ function resetConfigurator() {
   offerte.reset()
   status.value = ''
   failed.value = false
+  showSummary.value = false
 }
 </script>
 
@@ -158,6 +214,26 @@ function resetConfigurator() {
   background: var(--danger-bg);
   color: var(--danger);
 }
+
+.summary { padding: 8px 0 4px; }
+.summary h2 { margin: 10px 0 4px; font-size: 1.5rem; }
+.summary-lead { margin-bottom: 24px; }
+.summary-grid {
+  display: grid; grid-template-columns: 130px 1fr;
+  gap: 10px 16px; margin-bottom: 24px;
+  padding: 20px; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); background: var(--field-bg);
+}
+.summary-grid dt { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; padding-top: 2px; }
+.summary-grid dd { margin: 0; font-size: 0.95rem; }
+.summary-price {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 18px 20px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); margin-bottom: 8px;
+  background: radial-gradient(circle at 0 0, var(--accent-dim), transparent 60%), var(--surface);
+}
+.price-range { display: flex; align-items: baseline; gap: 4px; margin: 4px 0; }
+.price-range strong { font-family: var(--font-display); font-size: 1.6rem; color: var(--accent); }
 
 .fade-slide-enter-active, .fade-slide-leave-active {
   transition: opacity 0.18s ease, transform 0.18s ease;

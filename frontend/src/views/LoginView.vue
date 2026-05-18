@@ -9,7 +9,10 @@
         <label class="label">E-mail</label>
         <input v-model="email" type="email" class="input" required autocomplete="email" />
 
-        <label class="label" style="margin-top:14px">Wachtwoord</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
+          <label class="label" style="margin:0">Wachtwoord</label>
+          <router-link to="/wachtwoord-vergeten" class="forgot-link">Wachtwoord vergeten?</router-link>
+        </div>
         <input v-model="password" type="password" class="input" required autocomplete="current-password" />
 
         <p v-if="error" class="error">{{ error }}</p>
@@ -59,4 +62,6 @@ async function submit() {
 .login-card .btn { margin-top: 22px; justify-content: center; }
 .error { color: var(--danger); font-size: 0.9rem; margin: 10px 0 0; }
 .hint { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--border); }
+.forgot-link { font-size: 0.82rem; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.forgot-link:hover { color: var(--accent); }
 </style>
